@@ -16,7 +16,7 @@ void printHeader()
 void printUsage()
 {
 	printf("Usage:\n");
-	printf("xzcompress *input_filename* *output_compressed_data_filename* *output_metadata_json_filename*\n");
+	printf("xzcompress *input_filename* *chunk_size* *output_compressed_data_filename* *output_metadata_json_filename*\n");
 }
 
 long int getFileSize(FILE* fh)
@@ -78,7 +78,7 @@ int main(int argc, char** argv)
 {
 	printHeader();
 
-	if (argc < 4)
+	if (argc < 5)
 	{
 		printUsage();
 		return 0;
@@ -94,10 +94,15 @@ int main(int argc, char** argv)
 
 	// Now, ignoring the application executable path, what are our arguments:
 	char* inputFilePath = command_line_arguments[1];
-	char* outputFilePath = command_line_arguments[2];
-	char* outputMetaDataFilePath = command_line_arguments[3];
+
+	char* requestedChunkSizeString = command_line_arguments[2];
+	unsigned int requestedChunkSize = atoi(requestedChunkSizeString);
+
+	char* outputFilePath = command_line_arguments[3];
+	char* outputMetaDataFilePath = command_line_arguments[4];
 
 	printf("Opening %s\n", inputFilePath);
+	printf("Using chunk size of %d\n", requestedChunkSize);
 	printf("Writing to %s\n", outputFilePath);
 	printf("Writing metadata to %s\n", outputMetaDataFilePath);
 
@@ -118,8 +123,8 @@ int main(int argc, char** argv)
 	// How big is our input file?
 	long int inputFileSize = getFileSize(inputFileHandle);
 
-	// Assuming a 32MB chunk size, how many chunks is this file going to be?
-	unsigned int chunkSize = 32 * (1024 * 1024);
+	// Assuming a chunk size of N, how many chunks is this file going to be?
+	unsigned int chunkSize = requestedChunkSize;
 	unsigned int numberOfWholeChunks = inputFileSize / chunkSize;
 	unsigned int lastChunkSize = inputFileSize % chunkSize;
 	unsigned int numberOfChunks = numberOfWholeChunks + (lastChunkSize > 0);
@@ -140,7 +145,7 @@ int main(int argc, char** argv)
 		}
 		memset(chunkData, 0, currentChunkSize);
 
-		printf("Current file position: %d\n", ftell(inputFileHandle));
+		//printf("Current file position: %d\n", ftell(inputFileHandle));
 
 		size_t readSize = fread(chunkData, currentChunkSize, 1, inputFileHandle);
 		if (ferror(inputFileHandle))
