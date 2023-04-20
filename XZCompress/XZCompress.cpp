@@ -14,15 +14,25 @@
 #include <zlib.h>
 #include <json/json.h>
 
+#define XZCOMPRESS_VERSION 1.0
+
 void printHeader()
 {
-	printf("XZCompress\n");
+	printf("XZCompress v%.2f\n", XZCOMPRESS_VERSION);
 }
 
 void printUsage()
 {
 	printf("Usage:\n");
-	printf("xzcompress *input_filename* *chunk_size* *output_compressed_data_filename* *output_metadata_json_filename*\n");
+	printf("\n");
+	printf("Specify switches:\n");
+	printf("/i	OR /input - input file name - Ex. /i inputFileName.txt\n");
+	printf("/o	OR /output - output file name - Ex. /o outputFileName.txt\n");
+	printf("/ch OR /chunkSize - maximum compressed chunk size - Ex. /ch 123456\n");
+	printf("/m	OR /meta - meta data output file name - Ex. /m metaDataFileName.txt\n");
+	printf("\n");
+	printf("Ex.:\n");
+	printf("XZCompress /i myFile.dat /o myCompressedFile.dat /ch 33554432 /m myMetaDataFile.json\n");
 }
 
 long int getFileSize(FILE* fh)
@@ -85,12 +95,12 @@ FILE* openFileForReadingText(const char* inputFilePath)
 FILE* openFileForWritingBinary(const char* outputFilePath)
 {
 	FILE* outputFileHandle = nullptr;
-	errno_t fopenRetVal = fopen_s(&outputFileHandle, outputFilePath, "w+b");
-	if (fopenRetVal != 0)
-	{
-		printf("Error opening %s for writing.\n", outputFilePath);
-	}
-	return outputFileHandle;
+errno_t fopenRetVal = fopen_s(&outputFileHandle, outputFilePath, "w+b");
+if (fopenRetVal != 0)
+{
+	printf("Error opening %s for writing.\n", outputFilePath);
+}
+return outputFileHandle;
 }
 
 
@@ -139,28 +149,73 @@ int main(int argc, char** argv)
 {
 	printHeader();
 
-	if (argc < 5)
-	{
-		printUsage();
-		return 0;
-	}
-
 	char** command_line_arguments = (char**)malloc(sizeof(char*) * argc);
+
+	struct SwitchesAndValues
+	{
+		char* switchName;
+		char* switchValue;
+	};
+	SwitchesAndValues commandLineParams[256]; // FIX THIS>?!
+	unsigned int uNextSwitch = 0;
 
 	// Process command line arguments: (I just find this nicer)
 	for (int i = 0; i < argc; ++i)
 	{
-		command_line_arguments[i] = *(argv + i);
+		// Command line options are switches (ie. /s 234324, where /s is the switch and 234324 is the value for the switch.
+		if (**(argv + i) == '/')
+		{
+			commandLineParams[uNextSwitch].switchName = *(argv + i);
+
+			// We found a switch! Now check the next argument, that might be a value:
+			if (**(argv + i + 1) != '/')
+			{
+				// It is!
+				commandLineParams[uNextSwitch].switchValue = *(argv + i + 1);
+			}
+
+			++uNextSwitch;
+		}
 	}
 
 	// Now, ignoring the application executable path, what are our arguments:
-	char* inputFilePath = command_line_arguments[1];
+	char* inputFilePath = nullptr;
+	unsigned int requestedChunkSize = 0;
+	char* outputFilePath = nullptr;
+	char* outputMetaDataFilePath = nullptr;
 
-	char* requestedChunkSizeString = command_line_arguments[2];
-	unsigned int requestedChunkSize = atoi(requestedChunkSizeString);
+	for (unsigned int i = 0; i < uNextSwitch; ++i)
+	{
+		const SwitchesAndValues& currentSwitch = commandLineParams[i];
 
-	char* outputFilePath = command_line_arguments[3];
-	char* outputMetaDataFilePath = command_line_arguments[4];
+		if ((_stricmp(currentSwitch.switchName, "/i") == 0) || _stricmp(currentSwitch.switchName, "/input") == 0)
+		{
+			inputFilePath = currentSwitch.switchValue;
+		}
+
+		if ((_stricmp(currentSwitch.switchName, "/ch") == 0) || _stricmp(currentSwitch.switchName, "/chunkSize") == 0)
+		{
+			char* requestedChunkSizeString = currentSwitch.switchValue;
+			requestedChunkSize = atoi(requestedChunkSizeString);
+		}
+
+		if ((_stricmp(currentSwitch.switchName, "/o") == 0) || _stricmp(currentSwitch.switchName, "/output") == 0)
+		{
+			outputFilePath = currentSwitch.switchValue;
+		}
+
+		if ((_stricmp(currentSwitch.switchName, "/m") == 0) || _stricmp(currentSwitch.switchName, "/meta") == 0)
+		{
+			outputMetaDataFilePath = currentSwitch.switchValue;
+		}
+	}
+
+	// Check required parameters here:
+	if ((inputFilePath == nullptr) || (outputFilePath == nullptr) || (outputMetaDataFilePath == nullptr))
+	{
+		printUsage();
+		return 1;
+	}
 
 	printf("Opening %s\n", inputFilePath);
 	printf("Using chunk size of %d\n", requestedChunkSize);
@@ -212,6 +267,7 @@ int main(int argc, char** argv)
 	seekToBeginning(outputFileHandle);
 
 	Json::Value newJsonValue;
+	newJsonValue["xzcompress_version"] = XZCOMPRESS_VERSION;
 	newJsonValue["requested_chunk_size"] = requestedChunkSize;
 	newJsonValue["number_of_chunks"] = numberOfChunks;
 	newJsonValue["uncompressed_file_size_in_bytes"] = (Json::Int64)inputFileSize;
@@ -361,6 +417,7 @@ int main(int argc, char** argv)
 	}
 
 	// Check for duplicate entries, remove them first:
+
 	if (rootJsonValue.isMember(inputFilePath))
 	{
 		rootJsonValue.removeMember(inputFilePath);
