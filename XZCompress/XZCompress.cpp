@@ -128,7 +128,7 @@ bool deflate_with_strategy(z_stream& myZStream, const unsigned int strategy, uns
 
 	if (myZStream.total_out >= myZStream.total_in)
 	{
-		printf("Compressed data size is >= input data size.");
+		//printf("Compressed data size is >= input data size.\n");
 		return false;
 	}
 
@@ -212,13 +212,15 @@ int main(int argc, char** argv)
 	seekToBeginning(outputFileHandle);
 
 	Json::Value newJsonValue;
-	//newJsonValue["filename"] = inputFilePath;
 	newJsonValue["requested_chunk_size"] = requestedChunkSize;
 	newJsonValue["number_of_chunks"] = numberOfChunks;
+	newJsonValue["uncompressed_file_size_in_bytes"] = (Json::Int64)inputFileSize;
 
 	// Before we start, let's initialise Zlib:
 	for (unsigned int i = 0; i < numberOfChunks; ++i)
 	{
+		printf("Chunk %d of %d\n", i+1, numberOfChunks);
+
 		const unsigned int currentChunkSize = (i < numberOfWholeChunks) ? chunkSize : lastChunkSize;
 
 		unsigned char* chunkData = (unsigned char*)malloc(currentChunkSize);
@@ -247,7 +249,7 @@ int main(int argc, char** argv)
 		// We're going to run compression 5 times, in order to get the best
 		// compression for smallest size.
 		size_t smallestCompressedDataSize = currentChunkSize;
-		char bestCompressionMethod = 0;
+		char bestCompressionMethod = -1;
 
 		for (unsigned int i = 0; i < 5; ++i)
 		{
@@ -261,6 +263,34 @@ int main(int argc, char** argv)
 				bestCompressionMethod = i;
 			}
 		}
+		
+		switch (bestCompressionMethod)
+		{
+		default:
+			printf("Catastrophic error! None of the compression strategies could produce compressed data smaller than the uncompressed data.\n");
+			return 1;
+			break;
+
+		case Z_DEFAULT_STRATEGY:
+			printf("Best compression method: Z_DEFAULT_STRATEGY\n");
+			break;
+
+		case Z_FILTERED:
+			printf("Best compression method: Z_FILTERED");
+			break;
+
+		case Z_HUFFMAN_ONLY:
+			printf("Best compression method: Z_HUFFMAN_ONLY\n");
+			break;
+
+		case Z_RLE:
+			printf("Best compression method: Z_RLE\n");
+			break;
+
+		case Z_FIXED:
+			printf("Best compression method: Z_FIXED\n");
+			break;
+		}
 
 		// Now run it again so we get the actual data:
 		{
@@ -273,7 +303,7 @@ int main(int argc, char** argv)
 
 			if (myZStream.total_out >= myZStream.total_in)
 			{
-				printf("Compressed data size is >= input data size.");
+				printf("Compressed data size is >= input data size.\n");
 				return 1;
 			}
 		}
@@ -308,8 +338,7 @@ int main(int argc, char** argv)
 		printf("Compressed %d chunk to %d bytes.\n", currentChunkSize, myZStream.total_out);
 		newJsonValue["chunks"][i]["chunk_size_uncompressed"] = currentChunkSize;
 		newJsonValue["chunks"][i]["chunk_size_compressed"] = (unsigned int)myZStream.total_out;
-		//newJsonValue["chunks"][i]["chunk_size_saved_difference"] = (unsigned int)(currentChunkSize - myZStream.total_out);
-		//newJsonValue["chunks"][i]["percent_saved"] = 100 - (((float)myZStream.total_out / (float)currentChunkSize) * 100);
+		newJsonValue["chunks"][i]["deflate_strategy"] = bestCompressionMethod;
 
 		// Write out compressed data:
 		size_t elementsWritten = fwrite(compressedDataBuffer, myZStream.total_out, 1, outputFileHandle);
